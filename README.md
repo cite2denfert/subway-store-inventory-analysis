@@ -10,7 +10,7 @@ for inventory and shelf-display strategy.
 > result as a correlational finding. Observational ridership data cannot
 > establish that morning ridership *causes* evening ridership; a control
 > variable (mid-day total ridership) is used to reduce, not eliminate,
-> confounding. See Methodology below.
+> confounding. See [Methodology](#methodology--why-a-control-variable) below.
 
 ---
 
@@ -33,8 +33,8 @@ This project asks a narrow, testable question:
 
 | Dataset | Description | Included in repo? |
 |---|---|---|
-| Seoul subway hourly ridership (2021-07-05 snapshot) | Boarding/alighting counts per station, per hour-of-day | ❌ (15.9 MB — see Data access below) |
-| Subway station coordinates | Station name ↔ lat/lon lookup used to merge/validate station identity | ❌ (46 KB — see Data access below) |
+| Seoul subway hourly ridership (2021-07-05 snapshot) | Boarding/alighting counts per station, per hour-of-day | ❌ (15.9 MB — see [Data access](#data-access) below) |
+| Subway station coordinates | Station name ↔ lat/lon lookup used to merge/validate station identity | ❌ (see [Data access](#data-access) below) |
 
 Both source files are excluded from version control to keep the repository
 small and reviewable — this repo is meant to showcase the analysis, not host
@@ -84,22 +84,29 @@ also runs:
 
 ## Key findings
 
-- Morning alighting (X) remains a statistically significant (p < 0.05)
+Across **570 stations**:
+
+| Model | R² | Notes |
+|---|---|---|
+| Simple OLS (Y ~ X) | 0.9422 | slope = 0.9907, p ≈ 0 |
+| Controlled (Y ~ X + C) | 0.9815 | X coefficient β_x = 0.7469 (p ≈ 2.5×10⁻³¹⁶); control coefficient β_c = 0.119 (p ≈ 1.6×10⁻¹⁴²) |
+
+- Morning alighting (X) remains a statistically significant (p ≪ 0.05)
   positive predictor of evening boarding (Y) **even after controlling for**
   mid-day total ridership — suggesting the morning↔evening relationship isn't
   purely an artifact of "big stations are big all day."
-- X and the control variable C are meaningfully correlated, so coefficient
-  magnitudes should be read with caution (multicollinearity).
+- X and the control variable C are meaningfully correlated (r = 0.7693), so
+  coefficient magnitudes should be read with caution (multicollinearity).
 - Using the control-model residuals, each station is classified into one of
   two operational profiles:
-  - **퇴근집중형 (Evening-skewed)** — residual > 0. Evening boarding is higher
-    than the model predicts. → lean shelf space toward **alcohol / late-night
-    snacks**.
-  - **출근집중형 (Morning-skewed)** — residual ≤ 0. → lean shelf space toward
-    **grab-and-go food / coffee** for the morning rush.
+  - **퇴근집중형 (Evening-skewed, 303 stations)** — residual > 0. Evening
+    boarding is higher than the model predicts. → lean shelf space toward
+    **alcohol / late-night snacks**.
+  - **출근집중형 (Morning-skewed, 267 stations)** — residual ≤ 0. → lean
+    shelf space toward **grab-and-go food / coffee** for the morning rush.
 
 Full statistics (R², coefficients, p-values, RMSE, Shapiro–Wilk) are printed
-by the script at runtime and reproduced in the analysis report (docs/report.md).
+by the script at runtime and reproduced in the [analysis report](docs/report.md).
 
 ## Repository structure
 
