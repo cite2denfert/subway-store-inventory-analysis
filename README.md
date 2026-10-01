@@ -1,150 +1,131 @@
-# 🚇 Subway Station Convenience Store Inventory & Display Optimization
+# 🚇 역사 인근 편의점 시간대별 재고 및 진열 최적화 분석
 
-**역사 인근 편의점 시간대별 재고 및 진열 최적화 분석**
+서울 지하철 역별·시간대별 승하차 데이터로 **출근 시간대 중심 역**과 **퇴근 시간대 중심 역**을 구분하고,
+역 인근 편의점이 시간대별로 무엇을 더 준비하고 앞에 진열해야 할지 제안하는 프로젝트입니다.
 
-Seoul subway ridership by hour → which stations lean toward the **morning
-commute** vs the **evening commute** → what a nearby convenience store should
-stock and put up front at each time of day.
-
-> ⚠️ **Correlation, not causation.** Every result here is a correlational
-> finding from observational data. A control variable (mid-day ridership)
-> reduces, but does not eliminate, confounding by station size.
+> ⚠️ **상관관계 분석이며 인과관계가 아닙니다.** 모든 결과는 관측 데이터에서 나온 상관관계입니다.
+> 낮 시간대 이용객을 통제변수로 넣어 '역 규모'에 의한 교란을 줄였지만, 완전히 없애지는 못합니다.
 
 ---
 
-## Question
+## 분석 질문
 
-> Do stations with heavy **morning alighting** (07–09h, people arriving for
-> work) also have heavy **evening boarding** (18–20h, people heading home) —
-> *beyond* what the station's general busyness explains? And can the
-> leftover difference sort stations into two operationally useful groups?
+> 오전 **출근 시간대 하차**(07–09시, 일하러 도착하는 사람)가 많은 역은
+> 오후 **퇴근 시간대 승차**(18–20시, 집으로 떠나는 사람)도 많을까?
+> 그리고 그 관계가 **역의 전반적인 규모를 넘어서도** 성립할까?
+> 남는 차이로 역을 운영에 쓸 수 있는 두 유형으로 나눌 수 있을까?
 
-## Approach
+## 분석 방법
 
-| Step | What | Why |
+| 단계 | 내용 | 이유 |
 |---|---|---|
-| 1. Aggregate | Per station: X = 07–09h alighting, Y = 18–20h boarding, C = 10–16h total ridership. Transfer stations are **summed across lines**; if the file has a `사용월` column, months are summed per station then **averaged** (unit: monthly average riders). | One row per physical station. |
-| 2. Baseline | `Y ~ X` (OLS) | Shown for comparison only — big stations are big at every hour, so R² here is mostly a size effect. |
-| 3. Controlled model | `Y ~ X + C` (OLS, **HC3 robust SE**) | Tests whether X still tracks Y once general busyness (C) is held fixed. Residual spread grows with station size, which makes classical SEs too optimistic — Breusch–Pagan is reported to check this. |
-| 4. Diagnostics | VIF, Breusch–Pagan, Shapiro–Wilk, standardized coefficients, 95% CI | With n≈570, every p-value is tiny; effect size and intervals carry the information. |
-| 5. Classify | Residual of step 3 > 0 → **퇴근집중형 (evening-skewed)**, ≤ 0 → **출근집중형 (morning-skewed)** | Evening boarding higher / lower than the station's own morning & mid-day traffic predict. |
-| 6. Robustness | Re-fit as `log Y ~ log X + log C` and report how often the two classifications agree; flag stations with \|standardized residual\| < 0.5 as weak-signal | The sign of a residual near zero is noise, not a store strategy. |
+| 1. 집계 | 역별로 X = 07–09시 하차, Y = 18–20시 승차, C = 10–16시 총 이용객. 환승역은 **노선별 합산**, `사용월` 컬럼이 있으면 역별 월 합계를 **월평균**으로 집계 (단위: 월평균 인원) | 물리적인 역 하나당 한 행 |
+| 2. 기준선 | `Y ~ X` 단순회귀 | 비교용. 큰 역은 모든 시간대에 크기 때문에 여기서의 높은 R²는 대부분 규모 효과 |
+| 3. 분석 모델 | `Y ~ X + C` 다중회귀 (**HC3 강건 표준오차**) | 역 규모(C)를 고정해도 X가 Y와 함께 움직이는지 검증. 역 규모가 클수록 잔차 폭이 커질 수 있어 일반 표준오차는 과신 위험 → Breusch–Pagan 검정으로 점검 |
+| 4. 진단 | VIF, Breusch–Pagan, Shapiro–Wilk, 표준화 계수, 95% 신뢰구간 | n≈570이면 p값은 거의 항상 매우 작음 → 계수 크기와 신뢰구간이 실제 정보 |
+| 5. 분류 | 3단계 잔차 > 0 → **퇴근집중형**, ≤ 0 → **출근집중형** | 오전 하차량과 역 규모로 예상한 것보다 퇴근 승차가 많은지/적은지 |
+| 6. 강건성 | `log Y ~ log X + log C`로 다시 분류해 두 분류의 일치율 보고, \|표준화잔차\| < 0.5인 역은 '신호 약함'으로 표시 | 0 근처 잔차의 부호는 노이즈일 뿐 매장 전략의 근거가 되기 어려움 |
 
-## Results (v1 run)
+## 결과 (v1 실행 기준)
 
-Numbers below are from the original notebook run on 570 stations. The v2
-script fixes station de-duplication and transfer-station aggregation (see
-[Changelog](#changelog)), so the exact values will shift slightly when re-run;
-`outputs/results.json` is the source of truth after a run.
+아래 수치는 최초 노트북(570개 역) 실행 결과입니다. v2 스크립트에서 역 중복 제거와 환승역 집계 방식을
+수정했기 때문에([변경 이력](#변경-이력) 참고) 재실행하면 값이 조금 달라질 수 있으며,
+재실행 후에는 `outputs/results.json`이 기준입니다.
 
-| Model | R² | Key coefficient |
+| 모델 | R² | 주요 계수 |
 |---|---|---|
-| Baseline `Y ~ X` | 0.942 | slope 0.991 |
-| Controlled `Y ~ X + C` | 0.982 | β_x = 0.747, β_c = 0.119 (both p < 1e-100) |
+| 기준선 `Y ~ X` | 0.942 | 기울기 0.991 |
+| 분석 모델 `Y ~ X + C` | 0.982 | βₓ = 0.747, β_c = 0.119 (둘 다 p < 1e-100) |
 
-- **X stays a strong positive predictor after controlling for C.** Holding
-  mid-day ridership fixed, one additional morning alighting is associated
-  with ~0.75 additional evening boardings — consistent with "people who
-  arrive for work leave from the same station."
-- **Multicollinearity is moderate, not severe.** corr(X, C) = 0.769 ⇒
-  VIF = 1 / (1 − 0.769²) ≈ **2.4**, well under the common threshold of 5.
-- **Classification:** 303 evening-skewed vs 267 morning-skewed stations.
-  - 퇴근집중형 → widen evening shelf space for **beer / snacks / late-night food**
-  - 출근집중형 → put **grab-and-go food and coffee** front-and-center 06–10h
-- These store actions are **hypotheses derived from ridership**, not tested
-  against sales (see Limitations).
+- **C를 통제한 뒤에도 X는 Y의 강한 양(+)의 예측변수입니다.** 낮 시간대 이용객이 같은 역끼리 비교하면,
+  오전 하차가 1명 많을수록 오후 승차가 약 0.75명 많습니다. "아침에 일하러 내린 사람이 저녁에 같은 역에서 탄다"는 해석과 일치합니다.
+- **다중공선성은 크지 않습니다.** corr(X, C) = 0.769 ⇒ VIF = 1 / (1 − 0.769²) ≈ **2.4**로, 흔히 쓰는 기준(5)보다 낮습니다.
+- **유형 분류:** 퇴근집중형 303개 역, 출근집중형 267개 역
+  - 퇴근집중형 → 저녁 시간대 **맥주·안주·야식류** 진열 면적 확대
+  - 출근집중형 → 06–10시 **간편식·커피**를 매대 전면에 배치
+- 위 매장 전략은 승하차 데이터에서 도출한 **가설**이며, 실제 매출로 검증하지 않았습니다 (한계점 참고).
 
-## Repository structure
+## 레포 구조
 
 ```
 .
 ├── README.md
 ├── requirements.txt
 ├── src/
-│   └── subway_regression_analysis.py   ← end-to-end analysis (CLI)
+│   └── subway_regression_analysis.py   ← 전체 분석 스크립트 (CLI)
 ├── tests/
-│   └── test_pipeline.py                ← smoke test on synthetic data (same schema)
+│   └── test_pipeline.py                ← 같은 스키마의 합성 데이터로 돌리는 스모크 테스트
 ├── notebooks/
-│   └── analysis.ipynb                  ← original Colab exploration (v1, kept for history)
+│   └── analysis.ipynb                  ← 최초 Colab 탐색 노트북 (v1, 기록용)
 ├── docs/
-│   └── report.md                       ← written report (Korean)
-├── data/                               ← put the CSVs here (git-ignored)
-└── outputs/                            ← generated figures / CSV / JSON (git-ignored)
+│   └── report.md                       ← 분석 보고서
+├── data/                               ← CSV 파일 위치 (git 제외)
+└── outputs/                            ← 그림·CSV·JSON 산출물 (git 제외)
 ```
 
-## How to run
+## 실행 방법
 
 ```bash
 pip install -r requirements.txt
 
-# 1) put the two CSVs in data/  (see "Data access")
-# 2) run
+# 1) data/ 폴더에 CSV 두 개를 넣는다 ("데이터" 항목 참고)
+# 2) 실행
 python src/subway_regression_analysis.py
-python src/subway_regression_analysis.py --last-months 12   # optional: recent 12 months only
+python src/subway_regression_analysis.py --last-months 12   # 선택: 최근 12개월만 사용
 
-# tests (no real data needed)
+# 테스트 (실제 데이터 없이 실행 가능)
 pytest -q
 ```
 
-Outputs in `outputs/`:
+`outputs/`에 생성되는 파일:
 
-| File | Content |
+| 파일 | 내용 |
 |---|---|
-| `fig1_regression_analysis.png` | Baseline scatter (colored by station type), control-vs-Y scatter, stats table, residuals-vs-fitted |
-| `fig2_hourly_pattern_heatmap.png` | Hour-of-day ridership share (%) by station type |
-| `fig3_top20_station_heatmap.png` | Hour-of-day share for the 20 busiest stations, ordered by volume |
-| `station_types.csv` | Per-station X, Y, C, fitted value, residual, standardized residual, type |
-| `results.json` | All headline statistics |
+| `fig1_regression_analysis.png` | 기준선 산점도(역 유형별 색상), 통제변수–Y 산점도, 통계 요약표, 잔차–적합값 플롯 |
+| `fig2_hourly_pattern_heatmap.png` | 역 유형별 시간대 이용 비중(%) 히트맵 |
+| `fig3_top20_station_heatmap.png` | 이용량 상위 20개 역의 시간대 이용 비중(이용량 순 정렬) |
+| `station_types.csv` | 역별 X, Y, C, 예측값, 잔차, 표준화잔차, 유형 |
+| `results.json` | 핵심 통계량 전체 |
 
-Korean labels need a Korean font (Noto Sans CJK, Nanum Gothic, Malgun
-Gothic or AppleGothic are detected automatically; on Ubuntu/Colab:
-`apt install fonts-nanum`).
+그림의 한글 표시를 위해 한글 폰트가 필요합니다. Noto Sans CJK, 나눔고딕, 맑은 고딕, AppleGothic을 자동으로 찾으며,
+Ubuntu·Colab에서는 `apt install fonts-nanum`으로 설치할 수 있습니다.
 
-## Data
+## 데이터
 
-| File (place in `data/`) | Encoding | Source |
+| 파일 (`data/`에 위치) | 인코딩 | 출처 |
 |---|---|---|
-| `Seoul_subway_data_20210705.csv` | cp949 | Seoul Open Data Plaza ([data.seoul.go.kr](https://data.seoul.go.kr)) — *서울시 지하철 호선별 역별 시간대별 승하차 인원 정보*. The `20210705` in the file name appears to be the export date; the script prints the `사용월` range it actually finds. |
-| `subway_location_data.csv` | utf-8-sig | Station name ↔ coordinates (서울교통공사 역 위치 data). Used as the station universe; coordinates are reserved for the spatial extension in Future work. |
+| `Seoul_subway_data_20210705.csv` | cp949 | 서울 열린데이터광장([data.seoul.go.kr](https://data.seoul.go.kr)) — *서울시 지하철 호선별 역별 시간대별 승하차 인원 정보*. 파일명의 `20210705`는 내려받은 날짜로 보이며, 실제 포함된 `사용월` 범위는 스크립트 실행 시 출력됩니다. |
+| `subway_location_data.csv` | utf-8-sig | 역명 ↔ 좌표(서울교통공사 역 위치 데이터). 분석 대상 역 목록으로 사용하며, 좌표는 향후 공간 분석에 활용 예정입니다. |
 
-Raw data is not committed (15.9 MB, and it is public). Station names are
-normalized identically on both files (`서울역` → `서울`, `신촌(지하)` → `신촌`);
-the script prints any unmatched names so you can check coverage.
+원본 데이터는 공개 데이터이고 용량이 커서(15.9MB) 레포에 포함하지 않았습니다.
+두 파일의 역명은 같은 규칙으로 정규화하며(`서울역` → `서울`, `신촌(지하)` → `신촌`),
+매칭되지 않은 역 이름은 실행 시 출력되어 누락 여부를 확인할 수 있습니다.
 
-## Limitations
+## 한계점
 
-- **Ridership is a proxy for store demand.** No convenience-store sales data
-  was used; the inventory/display actions are untested hypotheses.
-- **Correlational.** Nothing here shows that morning ridership *causes*
-  evening ridership.
-- **Binary split at residual = 0** is a simplification; stations close to
-  zero are reported as weak-signal rather than forced into a strategy.
-- **Residuals are not normal** (Shapiro–Wilk). Inference uses HC3 robust
-  SEs and a log-log robustness model, but the very largest stations still
-  carry a lot of weight in the level model.
-- **No line/area effects.** All stations are treated as one population.
+- **승하차 인원은 편의점 수요의 대리 지표입니다.** 편의점 매출 데이터를 쓰지 않았으므로 진열·발주 전략은 검증되지 않은 가설입니다.
+- **상관관계 분석입니다.** 오전 승하차가 오후 승하차를 *유발한다*는 것을 보여주지 않습니다.
+- **잔차 0을 기준으로 한 이분 분류는 단순화입니다.** 0 근처 역은 억지로 전략을 붙이지 않고 '신호 약함'으로 따로 표시합니다.
+- **잔차가 정규분포를 따르지 않습니다**(Shapiro–Wilk). HC3 강건 표준오차와 로그 모델로 보완했지만, 초대형 역의 영향력은 여전히 큽니다.
+- **노선·지역 효과는 반영하지 않았습니다.** 모든 역을 하나의 모집단으로 다룹니다.
 
-## Future work
+## 향후 과제
 
-- Validate the two profiles against actual store POS data (A/B on shelf layout)
-- Line- or district-level differences (ANOVA / mixed models)
-- Spatial autocorrelation between neighboring stations (Moran's I) using the coordinates
+- 실제 편의점 POS 데이터로 두 유형 검증 (진열 변경 A/B 테스트)
+- 노선·지역별 차이 분석 (ANOVA, 혼합 모형)
+- 좌표를 활용한 인접 역 간 공간 자기상관 분석 (Moran's I)
 
-## Changelog
+## 변경 이력
 
-**v2 (2026-10)** — code quality & correctness pass
-- Fixed: transfer stations were **averaged** across lines instead of summed
-- Fixed: duplicate station rows in the coordinate file could duplicate
-  stations in the regression (inflating n); now one row per station, asserted
-- Fixed: `서울역`-style names failed to match because `역` was stripped on one side only
-- Added: HC3 robust SEs, VIF, Breusch–Pagan, standardized coefficients, 95% CI,
-  log-log robustness check, weak-signal flag, `station_types.csv` / `results.json`
-- Added: Fig 3 (top-20 stations), legends, zero-based axes, portable Korean font
-  detection, CLI paths, `requirements.txt`, synthetic-data smoke test
+**v2 (2026-10)** — 코드 품질 및 정확성 개선
+- 수정: 환승역 이용객을 노선별로 **합산하지 않고 평균** 내던 문제
+- 수정: 좌표 파일에 같은 역이 여러 행이면 회귀 데이터에도 중복되어 n이 부풀려질 수 있던 문제 → 역당 1행 보장
+- 수정: 한쪽 파일에서만 '역'을 떼어 `서울역` 같은 역이 매칭되지 않던 문제
+- 추가: HC3 강건 표준오차, VIF, Breusch–Pagan, 표준화 계수, 95% 신뢰구간, 로그 모델 강건성 검증, 신호 약한 역 표시, `station_types.csv`·`results.json` 출력
+- 추가: Fig 3(상위 20개 역), 범례, 0부터 시작하는 축, OS 무관 한글 폰트 자동 탐색, CLI 경로 옵션, `requirements.txt`, 합성 데이터 테스트
 
-**v1** — original bootcamp project (notebook)
+**v1** — 부트캠프 최초 분석 (노트북)
 
 ---
 
-*Built as a data-analysis project during the 이어드림스쿨 bootcamp and
-reorganized as a portfolio piece.*
+*이어드림스쿨 부트캠프 데이터 분석 프로젝트로 진행했고, 포트폴리오용으로 재구성했습니다.*
