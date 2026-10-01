@@ -1,0 +1,13 @@
+# data (public, not mirrored)
+data/
+*.csv
+
+# generated
+outputs/
+*.png
+
+# python
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/

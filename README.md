@@ -1,164 +1,150 @@
-# 🚇 Subway Station Convenience Store Inventory & Display Optimization Analysis
+# 🚇 Subway Station Convenience Store Inventory & Display Optimization
 
 **역사 인근 편의점 시간대별 재고 및 진열 최적화 분석**
 
-A statistics-driven analysis of how ridership patterns at Seoul subway stations
-relate to time-of-day demand at nearby convenience stores — and what that means
-for inventory and shelf-display strategy.
+Seoul subway ridership by hour → which stations lean toward the **morning
+commute** vs the **evening commute** → what a nearby convenience store should
+stock and put up front at each time of day.
 
-> ⚠️ **Correlation, not causation.** This project deliberately frames every
-> result as a correlational finding. Observational ridership data cannot
-> establish that morning ridership *causes* evening ridership; a control
-> variable (mid-day total ridership) is used to reduce, not eliminate,
-> confounding. See [Methodology](#methodology--why-a-control-variable) below.
+> ⚠️ **Correlation, not causation.** Every result here is a correlational
+> finding from observational data. A control variable (mid-day ridership)
+> reduces, but does not eliminate, confounding by station size.
 
 ---
 
-## Why this project
+## Question
 
-Convenience stores near subway stations see very different traffic depending
-on the hour — but not every station follows the same rhythm. Some are busiest
-in the morning rush, others in the evening. If a store's inventory and shelf
-layout don't match that rhythm, it's either under-stocked at peak demand or
-stuck holding stale product.
+> Do stations with heavy **morning alighting** (07–09h, people arriving for
+> work) also have heavy **evening boarding** (18–20h, people heading home) —
+> *beyond* what the station's general busyness explains? And can the
+> leftover difference sort stations into two operationally useful groups?
 
-This project asks a narrow, testable question:
+## Approach
 
-> Do stations with heavy **morning alighting** (people getting off, 07:00–09:00
-> — the commute-in crowd) also see heavy **evening boarding** (people getting
-> on, 18:00–20:00 — the commute-home crowd)? And can that relationship be used
-> to classify stations into two operationally useful groups?
-
-## Data
-
-| Dataset | Description | Included in repo? |
+| Step | What | Why |
 |---|---|---|
-| Seoul subway hourly ridership (2021-07-05 snapshot) | Boarding/alighting counts per station, per hour-of-day | ❌ (15.9 MB — see [Data access](#data-access) below) |
-| Subway station coordinates | Station name ↔ lat/lon lookup used to merge/validate station identity | ❌ (see [Data access](#data-access) below) |
+| 1. Aggregate | Per station: X = 07–09h alighting, Y = 18–20h boarding, C = 10–16h total ridership. Transfer stations are **summed across lines**; if the file has a `사용월` column, months are summed per station then **averaged** (unit: monthly average riders). | One row per physical station. |
+| 2. Baseline | `Y ~ X` (OLS) | Shown for comparison only — big stations are big at every hour, so R² here is mostly a size effect. |
+| 3. Controlled model | `Y ~ X + C` (OLS, **HC3 robust SE**) | Tests whether X still tracks Y once general busyness (C) is held fixed. Residual spread grows with station size, which makes classical SEs too optimistic — Breusch–Pagan is reported to check this. |
+| 4. Diagnostics | VIF, Breusch–Pagan, Shapiro–Wilk, standardized coefficients, 95% CI | With n≈570, every p-value is tiny; effect size and intervals carry the information. |
+| 5. Classify | Residual of step 3 > 0 → **퇴근집중형 (evening-skewed)**, ≤ 0 → **출근집중형 (morning-skewed)** | Evening boarding higher / lower than the station's own morning & mid-day traffic predict. |
+| 6. Robustness | Re-fit as `log Y ~ log X + log C` and report how often the two classifications agree; flag stations with \|standardized residual\| < 0.5 as weak-signal | The sign of a residual near zero is noise, not a store strategy. |
 
-Both source files are excluded from version control to keep the repository
-small and reviewable — this repo is meant to showcase the analysis, not host
-a data mirror. See below for how to obtain them.
+## Results (v1 run)
 
-### Data access
+Numbers below are from the original notebook run on 570 stations. The v2
+script fixes station de-duplication and transfer-station aggregation (see
+[Changelog](#changelog)), so the exact values will shift slightly when re-run;
+`outputs/results.json` is the source of truth after a run.
 
-- **Seoul subway ridership data**: published by Seoul Metro / Seoul Open Data
-  Plaza ([data.seoul.go.kr](https://data.seoul.go.kr)) under the 지하철 시간대별
-  승하차인원 dataset series. Search "지하철 시간대별 승하차인원" on the portal
-  and export a CSV for the date you want to reproduce this analysis with.
-- **Station coordinates**: station-level latitude/longitude lookup, also
-  sourced from Seoul's public transit open-data listings (station master
-  data). Any up-to-date 서울교통공사 역위치 dataset will work as a drop-in
-  replacement.
-- To reproduce the analysis, place the files at the repo root as
-  `Seoul_subway_data_20210705.csv` (encoding: `cp949`) and
-  `subway_location_data.csv` (encoding: `utf-8-sig`), matching the paths
-  read by [`src/subway_regression_analysis.py`](src/subway_regression_analysis.py).
-
-## Methodology — why a control variable?
-
-A naive approach would just regress evening boarding (Y) on morning alighting
-(X) and call a high R² "proof" that morning commuters become evening
-commuters at the same station. That's a weak claim on its own — both
-variables are also driven by a station's overall size/importance, which
-inflates the correlation without telling us anything about the *daily rhythm*
-specifically.
-
-So the analysis runs two models side by side:
-
-1. **Simple OLS regression** — `Y ~ X` (baseline, reported for comparison only)
-2. **Multiple regression with a control variable** — `Y ~ X + C`, where `C` is
-   each station's mean **mid-day (10:00–16:00) total ridership** — a proxy for
-   "how busy this station generally is," independent of the morning/evening
-   commute peaks.
-
-If X remains a statistically significant predictor of Y *after* controlling
-for C, that's a materially stronger claim than the naive baseline. The script
-also runs:
-
-- **Residual diagnostics**: Shapiro–Wilk normality test on model residuals
-- **Multicollinearity check**: correlation between X and C is reported
-  explicitly, with a note that VIF should be checked before over-interpreting
-  coefficient magnitudes
-- **Heteroscedasticity check**: residuals-vs-fitted plot
-
-## Key findings
-
-Across **570 stations**:
-
-| Model | R² | Notes |
+| Model | R² | Key coefficient |
 |---|---|---|
-| Simple OLS (Y ~ X) | 0.9422 | slope = 0.9907, p ≈ 0 |
-| Controlled (Y ~ X + C) | 0.9815 | X coefficient β_x = 0.7469 (p ≈ 2.5×10⁻³¹⁶); control coefficient β_c = 0.119 (p ≈ 1.6×10⁻¹⁴²) |
+| Baseline `Y ~ X` | 0.942 | slope 0.991 |
+| Controlled `Y ~ X + C` | 0.982 | β_x = 0.747, β_c = 0.119 (both p < 1e-100) |
 
-- Morning alighting (X) remains a statistically significant (p ≪ 0.05)
-  positive predictor of evening boarding (Y) **even after controlling for**
-  mid-day total ridership — suggesting the morning↔evening relationship isn't
-  purely an artifact of "big stations are big all day."
-- X and the control variable C are meaningfully correlated (r = 0.7693), so
-  coefficient magnitudes should be read with caution (multicollinearity).
-- Using the control-model residuals, each station is classified into one of
-  two operational profiles:
-  - **퇴근집중형 (Evening-skewed, 303 stations)** — residual > 0. Evening
-    boarding is higher than the model predicts. → lean shelf space toward
-    **alcohol / late-night snacks**.
-  - **출근집중형 (Morning-skewed, 267 stations)** — residual ≤ 0. → lean
-    shelf space toward **grab-and-go food / coffee** for the morning rush.
-
-Full statistics (R², coefficients, p-values, RMSE, Shapiro–Wilk) are printed
-by the script at runtime and reproduced in the [analysis report](docs/report.md).
+- **X stays a strong positive predictor after controlling for C.** Holding
+  mid-day ridership fixed, one additional morning alighting is associated
+  with ~0.75 additional evening boardings — consistent with "people who
+  arrive for work leave from the same station."
+- **Multicollinearity is moderate, not severe.** corr(X, C) = 0.769 ⇒
+  VIF = 1 / (1 − 0.769²) ≈ **2.4**, well under the common threshold of 5.
+- **Classification:** 303 evening-skewed vs 267 morning-skewed stations.
+  - 퇴근집중형 → widen evening shelf space for **beer / snacks / late-night food**
+  - 출근집중형 → put **grab-and-go food and coffee** front-and-center 06–10h
+- These store actions are **hypotheses derived from ridership**, not tested
+  against sales (see Limitations).
 
 ## Repository structure
 
 ```
 .
-├── README.md                              ← you are here
+├── README.md
+├── requirements.txt
 ├── src/
-│   └── subway_regression_analysis.py      ← end-to-end analysis script
+│   └── subway_regression_analysis.py   ← end-to-end analysis (CLI)
+├── tests/
+│   └── test_pipeline.py                ← smoke test on synthetic data (same schema)
 ├── notebooks/
-│   └── analysis.ipynb                     ← exploratory notebook version (Colab)
+│   └── analysis.ipynb                  ← original Colab exploration (v1, kept for history)
 ├── docs/
-│   └── report.md                          ← full written report
-└── (fig1_regression_analysis_v2.png,      ← generated by the script; not
-    fig2_hourly_pattern_heatmap.png)          committed — regenerate locally
+│   └── report.md                       ← written report (Korean)
+├── data/                               ← put the CSVs here (git-ignored)
+└── outputs/                            ← generated figures / CSV / JSON (git-ignored)
 ```
 
 ## How to run
 
 ```bash
-pip install numpy pandas matplotlib seaborn scipy statsmodels
+pip install -r requirements.txt
 
-# Place Seoul_subway_data_20210705.csv and subway_location_data.csv
-# in the repo root (see "Data access" above), then:
+# 1) put the two CSVs in data/  (see "Data access")
+# 2) run
 python src/subway_regression_analysis.py
+python src/subway_regression_analysis.py --last-months 12   # optional: recent 12 months only
+
+# tests (no real data needed)
+pytest -q
 ```
 
-This regenerates:
-- `fig1_regression_analysis_v2.png` — 4-panel regression dashboard (baseline
-  scatter, control-variable scatter, statistics table, residuals-vs-fitted)
-- `fig2_hourly_pattern_heatmap.png` — hourly ridership-share heatmap by
-  station type
+Outputs in `outputs/`:
+
+| File | Content |
+|---|---|
+| `fig1_regression_analysis.png` | Baseline scatter (colored by station type), control-vs-Y scatter, stats table, residuals-vs-fitted |
+| `fig2_hourly_pattern_heatmap.png` | Hour-of-day ridership share (%) by station type |
+| `fig3_top20_station_heatmap.png` | Hour-of-day share for the 20 busiest stations, ordered by volume |
+| `station_types.csv` | Per-station X, Y, C, fitted value, residual, standardized residual, type |
+| `results.json` | All headline statistics |
+
+Korean labels need a Korean font (Noto Sans CJK, Nanum Gothic, Malgun
+Gothic or AppleGothic are detected automatically; on Ubuntu/Colab:
+`apt install fonts-nanum`).
+
+## Data
+
+| File (place in `data/`) | Encoding | Source |
+|---|---|---|
+| `Seoul_subway_data_20210705.csv` | cp949 | Seoul Open Data Plaza ([data.seoul.go.kr](https://data.seoul.go.kr)) — *서울시 지하철 호선별 역별 시간대별 승하차 인원 정보*. The `20210705` in the file name appears to be the export date; the script prints the `사용월` range it actually finds. |
+| `subway_location_data.csv` | utf-8-sig | Station name ↔ coordinates (서울교통공사 역 위치 data). Used as the station universe; coordinates are reserved for the spatial extension in Future work. |
+
+Raw data is not committed (15.9 MB, and it is public). Station names are
+normalized identically on both files (`서울역` → `서울`, `신촌(지하)` → `신촌`);
+the script prints any unmatched names so you can check coverage.
 
 ## Limitations
 
-- **Single-day snapshot**: the ridership data reflects one date
-  (2021-07-05). Day-of-week and seasonal effects aren't modeled.
-- **Correlational, not causal**: as emphasized throughout, this analysis
-  cannot show that morning ridership *causes* evening ridership at a given
-  station — only that the two are related beyond what general station
-  "busyness" explains.
-- **No store-level sales data**: inventory/display recommendations are
-  inferred from ridership proxies, not validated against actual convenience
-  store sales.
+- **Ridership is a proxy for store demand.** No convenience-store sales data
+  was used; the inventory/display actions are untested hypotheses.
+- **Correlational.** Nothing here shows that morning ridership *causes*
+  evening ridership.
+- **Binary split at residual = 0** is a simplification; stations close to
+  zero are reported as weak-signal rather than forced into a strategy.
+- **Residuals are not normal** (Shapiro–Wilk). Inference uses HC3 robust
+  SEs and a log-log robustness model, but the very largest stations still
+  carry a lot of weight in the level model.
+- **No line/area effects.** All stations are treated as one population.
 
-## Tech stack
+## Future work
 
-`Python` · `pandas` / `numpy` · `statsmodels` (OLS) · `scipy.stats`
-(Shapiro–Wilk, linregress) · `matplotlib` / `seaborn` (visualization,
-Claus Wilke visualization principles — proportional ink, meaningful color,
-data-driven ordering)
+- Validate the two profiles against actual store POS data (A/B on shelf layout)
+- Line- or district-level differences (ANOVA / mixed models)
+- Spatial autocorrelation between neighboring stations (Moran's I) using the coordinates
+
+## Changelog
+
+**v2 (2026-10)** — code quality & correctness pass
+- Fixed: transfer stations were **averaged** across lines instead of summed
+- Fixed: duplicate station rows in the coordinate file could duplicate
+  stations in the regression (inflating n); now one row per station, asserted
+- Fixed: `서울역`-style names failed to match because `역` was stripped on one side only
+- Added: HC3 robust SEs, VIF, Breusch–Pagan, standardized coefficients, 95% CI,
+  log-log robustness check, weak-signal flag, `station_types.csv` / `results.json`
+- Added: Fig 3 (top-20 stations), legends, zero-based axes, portable Korean font
+  detection, CLI paths, `requirements.txt`, synthetic-data smoke test
+
+**v1** — original bootcamp project (notebook)
 
 ---
 
-*This was originally built as a data-analysis coursework project and has
-been reorganized here as a portfolio piece.*
+*Built as a data-analysis project during the 이어드림스쿨 bootcamp and
+reorganized as a portfolio piece.*
